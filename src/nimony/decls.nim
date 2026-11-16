@@ -106,7 +106,7 @@ proc skipRoutineDeclPrefix*(n: var Cursor; parentKind: TypeKind) =
 
 proc skipProcTypeToParams*(t: Cursor): Cursor =
   ## Pure version: returns a cursor advanced past the prefix slots.
-  result = t
+  result = skipModifier(t)
   if result.typeKind in RoutineTypes:
     skipToParams result
 
