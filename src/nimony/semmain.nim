@@ -648,7 +648,8 @@ proc resolveCyclicImports(c: var SemContext) =
       # importer's scope, where it shadows the system one and makes each plain
       # `seq[T]` ambiguous. The base declaration is what the importer needs;
       # it instantiates from that itself.
-      if modSuffix == targetSuffix and not pool.symIsInstantiation(symId):
+      if modSuffix == targetSuffix and not pool.symIsInstantiation(symId) and
+          tryLoadSym(symId).decl.symKind != ModuleY:
         let nameId = pool.symNameId(symId)
         c.importTab.mgetOrPut(nameId, @[]).addIfAbsent(moduleSym)
         module.iface.mgetOrPut(nameId, @[]).addIfAbsent(symId)
