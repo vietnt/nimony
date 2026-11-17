@@ -6,7 +6,7 @@
 
 ## Path handling and `exec` like features as `sem.nim` needs it.
 
-from std / strutils import multiReplace, startsWith, split
+from std / strutils import multiReplace, startsWith, endsWith, split
 from std / algorithm import sort
 import std / [tables, sets, os, envvars, syncio, formatfloat, assertions, dirs, paths, times]
 from std / osproc import execCmdEx, startProcess, waitForExit, close,
@@ -1079,6 +1079,43 @@ proc evalCacheDir*(c: SemContext): string =
   ## and it evaluates one expression at a time.
   c.g.config.nifcachePath / c.thisModuleSuffix & ".eval"
 
+proc linkResults(fromDir, toDir, self: string; exts: openArray[string]) =
+  var names: seq[string] = @[]
+  try:
+    for it in walkDir(path(fromDir), relative = true):
+      if it.kind == pcFile: names.add $it.path
+  except:
+    discard "an unreadable cache shares nothing"
+  for name in names:
+    if name.startsWith(self & "."): continue
+    var wanted = false
+    for ext in exts:
+      if name.endsWith(ext): wanted = true
+    if not wanted: continue
+    let f = fromDir / name
+    let target = toDir / name
+    try:
+      if fileExists(target):
+        if sameFile(f, target) or vfsMtime(target) >= vfsMtime(f):
+          continue
+        vfsRemove target
+      createHardlink(f, target)
+    except:
+      discard "the program's build makes it"
+
+proc shareResults(build, evalCache, self: string) =
+  ## Hard-links the build's parse, sem and C hexer results into the
+  ## program's nimcache so its nifmake finds them current. Tools write by
+  ## rename, so a node that remakes one there never writes through a link.
+  linkResults(build, evalCache, self,
+              [".p.nif", ".p.deps.nif", ".s.nif", ".s.idx.nif", ".s.deps.nif"])
+  if dirExists(build / BackendDirC):
+    try:
+      createDir(path(evalCache / BackendDirC))
+    except:
+      return
+    linkResults(build / BackendDirC, evalCache / BackendDirC, self, [".x.nif"])
+
 proc runEval*(c: var SemContext; dest: var TokenBuf; srcName: string; src: TokenBuf;
                usedModules: HashSet[string]; sourceDir = ""): string =
   ## Returns an error message if the evaluation failed, "" on success.
@@ -1093,6 +1130,8 @@ proc runEval*(c: var SemContext; dest: var TokenBuf; srcName: string; src: Token
   let progfile = evalCache / srcName.addFileExt(".p.nif")
   try:
     createDir(path(evalCache))
+    if not isStd:
+      shareResults(c.g.config.nifcachePath, evalCache, c.thisModuleSuffix)
     writeFileAndIndex(progfile, src)
 
     # Write the .p.deps.nif file so that `nimony s` can find the imports:

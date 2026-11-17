@@ -655,11 +655,34 @@ proc incrementalTests*() =
           expect filesBySuffix(d, ".x.nif").anyIt(readFile(it).contains("twice")),
                  "eval-pair: " & d & " has no `.x.nif` of evalpairdep"
       expect evalDirs == 2, "eval-pair: " & $evalDirs & " `.eval` nimcaches (expected 2)"
+      # Both programs reuse the build's `.s.nif` of `evalpairdep`.
+      let depSemmed = filesBySuffix(pairCache, ".s.nif").filterIt(
+        it.parentDir == pairCache and readFile(it).contains("twice") and
+        readFile(it).contains("thrice"))
+      expect depSemmed.len == 1, "eval-pair: " & $depSemmed.len & " `.s.nif` of evalpairdep"
+      for kind, d in walkDir(pairCache):
+        if kind == pcDir and d.endsWith(".eval") and depSemmed.len == 1:
+          let shared = d / depSemmed[0].lastPathPart
+          expect fileExists(shared) and sameFile(shared, depSemmed[0]),
+                 "eval-pair: " & d & " semchecked evalpairdep again"
       var mainDirs: seq[string] = @[]
       for kind, d in walkDir(pairCache / "c"):
         if kind == pcDir: mainDirs.add d.lastPathPart
       expect mainDirs.len == 1,
              "eval-pair: backend directories " & $mainDirs & " (expected the main module's alone)"
+    # `once` changes evalpairdep's interface, so the evaluating modules are
+    # re-semmed and their programs must see the new body of `twice`.
+    let pairDep = "tests/incremental/evalpairdep.nim"
+    let originalPairDep = readFile(pairDep)
+    writeFile(pairDep, originalPairDep.replace("2 * x", "2 * x + 1") &
+      "func once*(x: int): int = x\n")
+    let (edited, ec2) = execCmdEx(nimony.quoteShell & " c -r --silentMake --nimcache:" &
+      pairCache.quoteShell & " " & pairSrc.quoteShell)
+    writeFile(pairDep, originalPairDep)
+    if ec2 != 0:
+      failures.add "eval-pair-edit: compile failed: " & edited.strip.splitLines[^1]
+    else:
+      expect edited.contains("evalpair 43 42"), "eval-pair-edit: expected 'evalpair 43 42'"
 
   # Phase 18: builds started from different directories share a stdlib
   # cache, so nothing stored in it may depend on the directory of the build
