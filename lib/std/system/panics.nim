@@ -60,7 +60,7 @@ type
   HasWriteErr = concept
     proc writeErr(x: Self)
 
-proc raiseIndexError3[T: HasWriteErr](i, a, b: T) {.noinline.} =
+proc raiseIndexError3[T: HasWriteErr](i, a, b: T) {.noinline, noreturn.} =
   writeErr "index out of bounds: "
   writeErr i
   writeErr " notin "
@@ -94,7 +94,7 @@ proc nimUcheckB(i, b: uint): uint {.inline, exportc: "nimUcheckB".} =
   if result > b:
     raiseIndexError3(i, 0, b)
 
-proc nimInvalidObjConv(name: string) {.inline, exportc: "nimInvalidObjConv".} =
+proc nimInvalidObjConv(name: string) {.inline, noreturn, exportc: "nimInvalidObjConv".} =
   writeErr "invalid object conversion: "
   writeErr name
   writeErr "\n"
