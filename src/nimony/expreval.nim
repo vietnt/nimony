@@ -524,12 +524,18 @@ template evalFloatBinOp(c: var EvalContext; n: var Cursor; opr: untyped) {.dirty
   let orig = n
   var a = default(Cursor)
   var b = default(Cursor)
+  var bits = 64
   n.into:
+    bits = typeBits(toTypeImpl(n))
     skip n, SkipType # type
     a = propagateError eval(c, n)
     b = propagateError eval(c, n)
   if a.kind == FloatLit and b.kind == FloatLit:
-    let rf = opr(a.floatVal, b.floatVal)
+    # A float32 operation folds as C computes it: on float32 operands, its
+    # result rounded to float32. Computing +, -, * or / of two float32 in
+    # float64 and rounding once is exact.
+    let rf = if bits == 32: float64(float32(opr(float64(float32(a.floatVal)), float64(float32(b.floatVal)))))
+             else: opr(a.floatVal, b.floatVal)
     result = floatValue(c, rf, orig.info)
   else:
     cannotEval orig
